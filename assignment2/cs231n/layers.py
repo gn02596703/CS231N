@@ -352,7 +352,7 @@ def dropout_backward(dout, cache):
   return dx
 
 
-def conv_forward_naive(x, w, b, conv_param):
+def conv_forward_naive(X, W, B, conv_param):
   """
   A naive implementation of the forward pass for a convolutional layer.
 
@@ -380,11 +380,31 @@ def conv_forward_naive(x, w, b, conv_param):
   # TODO: Implement the convolutional forward pass.                           #
   # Hint: you can use the function np.pad for padding.                        #
   #############################################################################
-  pass
+  N, C_X, H_X, W_X = X.shape
+  F, C_W, HH, WW = W.shape
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+  
+  X_pad = np.zeros((N, C_X, H_X + 2 * pad, W_X + 2 * pad))
+  X_pad[:, :, pad:-pad, pad:-pad] = np.copy(X)
+  H_out = 1 + np.floor((H_X + 2 * pad - HH) / stride)
+  W_out = 1 + np.floor((W_X + 2 * pad - WW) / stride)
+  C_out = np.floor(C_X / C_W)
+  out = np.zeros((N, F, np.int(H_out), np.int(W_out)))
+
+  for N_iter in range(0, N):
+    for F_iter in range(0, F):
+      for H_iter in range(0, np.int(H_out)):
+        for W_iter in range(0, np.int(W_out)):
+          H_start = H_iter * stride
+          H_end = H_start + HH
+          W_start = W_iter * stride
+          W_end = W_start + WW
+          out[N_iter, F_iter, H_iter, W_iter] = np.sum(W[F_iter, :, :, :] * X_pad[N_iter, :, H_start : H_end, W_start : W_end]) + B[F_iter]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
-  cache = (x, w, b, conv_param)
+  cache = (X, W, B, conv_param)
   return out, cache
 
 
@@ -405,14 +425,41 @@ def conv_backward_naive(dout, cache):
   #############################################################################
   # TODO: Implement the convolutional backward pass.                          #
   #############################################################################
-  pass
+  X, W, B, conv_param = cache
+  N, C_X, H_X, W_X = X.shape
+  F, C_W, HH, WW = W.shape
+  stride = conv_param['stride']
+  pad = conv_param['pad']
+
+  X_pad = np.zeros((N, C_X, H_X + 2 * pad, W_X + 2 * pad))
+  X_pad[:, :, pad:-pad, pad:-pad] = np.copy(X)
+  H_out = 1 + np.floor((H_X + 2 * pad - HH) / stride)
+  W_out = 1 + np.floor((W_X + 2 * pad - WW) / stride)
+
+  dx_pad = np.zeros(X_pad.shape)
+  dw = np.zeros(W.shape)
+  db = np.zeros(B.shape)
+  for N_iter in range(0, N):
+    for F_iter in range(0, F):
+      for H_iter in range(0, np.int(H_out)):
+        for W_iter in range(0, np.int(W_out)):
+          H_start = H_iter * stride
+          H_end = H_start + HH
+          W_start = W_iter * stride
+          W_end = W_start + WW
+
+          dx_pad[N_iter, :, H_start : H_end, W_start : W_end] += dout[N_iter, F_iter, H_iter, W_iter] * W[F_iter, :, :, :]
+          dw[F_iter, :, :, :] += dout[N_iter, F_iter, H_iter, W_iter] * X_pad[N_iter, :, H_start : H_end, W_start : W_end]
+          db[F_iter] += dout[N_iter, F_iter, H_iter, W_iter]
+  
+  dx = dx_pad[:, :, pad:-pad, pad:-pad]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
   return dx, dw, db
 
 
-def max_pool_forward_naive(x, pool_param):
+def max_pool_forward_naive(X, pool_param):
   """
   A naive implementation of the forward pass for a max pooling layer.
 
@@ -431,11 +478,28 @@ def max_pool_forward_naive(x, pool_param):
   #############################################################################
   # TODO: Implement the max pooling forward pass                              #
   #############################################################################
-  pass
+  N, C_X, H_X, W_X = X.shape
+  pool_height = pool_param['pool_height']
+  pool_width = pool_param['pool_width']
+  stride = pool_param['stride']
+
+  H_out = 1 + np.floor((H_X - pool_height) / stride)
+  W_out = 1 + np.floor((W_X - pool_width) / stride)
+
+  out = np.zeros((N, C_X, H_out, W_out))
+  for N_iter in range(0, N):
+    for C_iter in range(0, C_X):
+      for H_iter in range(0, np.int(H_out)):
+        for W_iter in range(0, np.int(W_out)):
+          H_start = H_iter * stride
+          H_end = H_start + pool_height
+          W_start = W_iter * stride
+          W_end = W_start + pool_width
+          out[N_iter, C_iter, H_iter, W_iter] = np.max(X[N_iter, C_iter, H_start : H_end, W_start : W_end])
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
-  cache = (x, pool_param)
+  cache = (X, pool_param)
   return out, cache
 
 
@@ -454,7 +518,27 @@ def max_pool_backward_naive(dout, cache):
   #############################################################################
   # TODO: Implement the max pooling backward pass                             #
   #############################################################################
-  pass
+  X, pool_param = cache
+  N, C_X, H_X, W_X = X.shape
+  pool_height = pool_param['pool_height']
+  pool_width = pool_param['pool_width']
+  stride = pool_param['stride']
+
+  H_out = 1 + np.floor((H_X - pool_height) / stride)
+  W_out = 1 + np.floor((W_X - pool_width) / stride)
+
+  dx = np.zeros(X.shape)
+  for N_iter in range(0, N):
+    for C_iter in range(0, C_X):
+      for H_iter in range(0, np.int(H_out)):
+        for W_iter in range(0, np.int(W_out)):
+          H_start = H_iter * stride
+          H_end = H_start + pool_height
+          W_start = W_iter * stride
+          W_end = W_start + pool_width
+          index = X[N_iter, C_iter, H_start : H_end, W_start : W_end] == np.max(X[N_iter, C_iter, H_start : H_end, W_start : W_end])
+          dx_mask = dx[N_iter, C_iter, H_start : H_end, W_start : W_end]
+          dx_mask[index] = dout[N_iter, C_iter, H_iter, W_iter]
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
