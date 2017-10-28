@@ -251,9 +251,14 @@ class FullyConnectedNet(object):
       b_name = "b" + str(i +1)
       if i == 0:
         out_pre_layer = X
-      out_pre_layer, cache[i] = affine_relu_forward(out_pre_layer, 
+      out_pre_layer, cache_affine_relu = affine_relu_forward(out_pre_layer, 
                                                       self.params[W_name], 
                                                       self.params[b_name])
+      if self.use_dropout:
+        out_pre_layer, cache_dp = dropout_forward(out_pre_layer, self.dropout_param)
+        cache[i] = (cache_dp, cache_affine_relu)
+      else:
+        cache[i] = cache_affine_relu
     W_name_last = "W" + str(self.num_layers)
     b_name_last = "b" + str(self.num_layers)
     scores, cache[self.num_layers -1] = affine_forward(out_pre_layer, 
@@ -281,20 +286,24 @@ class FullyConnectedNet(object):
     # automated tests, make sure that your L2 regularization includes a factor #
     # of 0.5 to simplify the expression for the gradient.                      #
     ############################################################################
-    dHidden = {}
     W_name = "W" + str(self.num_layers)
     b_name = "b" + str(self.num_layers)
     loss, dSoftmax = softmax_loss(scores, y)
     loss = loss + 0.5 * self.reg * np.sum(self.params[W_name]**2)
-    dHidden[self.num_layers - 1], grads[W_name], grads[b_name] = affine_backward(dSoftmax,
+    dHidden, grads[W_name], grads[b_name] = affine_backward(dSoftmax,
                                                                                    cache[self.num_layers -1])
     grads[W_name] = grads[W_name] + self.reg * self.params[W_name]
     for i in range(1, self.num_layers):
       W_name = "W" + str(self.num_layers -i)
       b_name = "b" + str(self.num_layers -i)
       loss = loss + 0.5 * self.reg * np.sum(self.params[W_name]**2)
-      dHidden[self.num_layers -1 -i], grads[W_name], grads[b_name] = affine_relu_backward(dHidden[self.num_layers - i], 
-                                                                                            cache[self.num_layers -1 -i])
+      if self.use_dropout:
+        cache_dp, cache_affine_relu = cache[self.num_layers -1 -i]
+        dHidden = dropout_backward(dHidden, cache_dp)
+        dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
+      else:
+        cache_affine_relu = cache[self.num_layers -1 -i]
+        dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
       grads[W_name] = grads[W_name] + self.reg * self.params[W_name]                                                                                    
     ############################################################################
     #                             END OF YOUR CODE                             #
