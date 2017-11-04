@@ -200,6 +200,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
     #X_norm = (x - sample_mean) / np.sqrt(sample_var + eps)
     #out = gamma * X_norm + beta
 
+    # Computation graph of whole work flow 
     num_train, num_feature = x.shape
     MX = np.mean(x, axis = 0)
     VarX = np.var(x, axis = 0)
@@ -646,7 +647,41 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
   # version of batch normalization defined above. Your implementation should  #
   # be very short; ours is less than five lines.                              #
   #############################################################################
-  pass
+  mode = bn_param['mode']
+  eps = bn_param.get('eps', 1e-5)
+  momentum = bn_param.get('momentum', 0.9)
+
+  N, C, H, W = x.shape
+  num_train = N * H * W
+  num_feature = C # channels
+
+  running_mean = bn_param.get('running_mean', np.zeros(num_feature, dtype=x.dtype))
+  running_var = bn_param.get('running_var', np.zeros(num_feature, dtype=x.dtype))
+  x_rshp = x.reshape(num_train, num_feature)
+  
+  if mode == 'train':
+    sample_mean = np.mean(x_rshp, axis = 0)
+    sample_var = np.var(x_rshp, axis = 0)
+    running_mean = momentum * running_mean + (1 - momentum) * sample_mean
+    running_var = momentum * running_var + (1 - momentum) * sample_var
+    
+    x_norm = (x_rshp - sample_mean) / np.sqrt(sample_var + eps)
+    out = gamma * x_norm + beta
+    out = out.reshape(N, C, H, W)
+
+    cache = (x, gamma, beta, sample_mean, sample_var, bn_param)
+  elif mode == 'test':
+    x_norm = (x_rshp - running_mean) / np.sqrt(running_var + eps)
+    out = gamma * x_norm + beta
+    out = out.reshape(N, C, H, W)
+
+  else:
+    raise ValueError('Invalid forward batchnorm mode "%s"' % mode)
+
+
+  # Store the updated running means back into bn_param
+  bn_param['running_mean'] = running_mean
+  bn_param['running_var'] = running_var
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################
@@ -676,7 +711,48 @@ def spatial_batchnorm_backward(dout, cache):
   # version of batch normalization defined above. Your implementation should  #
   # be very short; ours is less than five lines.                              #
   #############################################################################
-  pass
+
+  x, gamma, beta, sample_mean, sample_var, bn_param = cache
+  N, C, H, W = x.shape
+  num_train = N * H * W
+  num_feature = C # channels
+  x = x.reshape(num_train, num_feature)
+  dout = dout.reshape(num_train, num_feature)
+
+  eps = bn_param.get('eps', 1e-5)
+
+  MX = np.mean(x, axis = 0)
+  VarX = np.var(x, axis = 0)
+  VarEps = VarX + eps
+  SqVarEps = np.sqrt(VarEps)
+  iSqVarEps = SqVarEps ** (-1)
+  Xu = x - MX
+  Xhat = Xu * iSqVarEps
+  out = gamma * Xhat + beta
+  
+  dy_dXhat = dout * gamma
+  dXhat_dXu = dy_dXhat * iSqVarEps
+
+  dXu_dx = dXhat_dXu # 1
+  dXu_dMX = -1 * np.sum(dXhat_dXu, axis = 0)
+  dMx_dx = dXu_dMX * np.ones((num_train, num_feature)) / np.float(num_train) #2
+
+  dXhat_diSqVarEps = np.sum(dy_dXhat * Xu, axis = 0)
+  diSqVarEps_dSqVarEps = -1. / (SqVarEps**(2)) * dXhat_diSqVarEps
+  dSqVarEps_dVarEps = 0.5 / np.sqrt(VarEps) * diSqVarEps_dSqVarEps
+  dVarEps_dVarX = dSqVarEps_dVarEps
+  dVarX_dXu = 1. / np.float(num_train)* 2 * Xu * np.ones((num_train, num_feature)) * dVarEps_dVarX 
+  
+  dXu_dx_2 = dVarX_dXu # 1
+  dXu_dMX_2 = (-1) * np.sum(dVarX_dXu, axis = 0)
+  dMx_dx_2 = dXu_dMX_2 * np.ones((num_train, num_feature)) / np.float(num_train) #2
+  
+  dx = dXu_dx + dXu_dx_2 + dMx_dx + dMx_dx_2
+  
+
+  dgamma = np.sum(dout * Xhat, axis = 0)
+  dbeta = np.sum(dout, axis = 0)
+  dx = dx.reshape(N, C, H, W)
   #############################################################################
   #                             END OF YOUR CODE                              #
   #############################################################################

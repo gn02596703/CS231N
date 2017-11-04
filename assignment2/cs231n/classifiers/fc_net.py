@@ -5,6 +5,40 @@ from cs231n.layers import *
 from cs231n.layer_utils import *
 
 
+#####################################################
+# Include Batch Norm layer into sandwitch layer
+#####################################################
+def affine_batch_relu_forward(x, w, b, gamma, beta, bn_param):
+  """
+  Convenience layer that perorms an affine-batch-relu
+
+  Inputs:
+  - x: Input to the affine layer
+  - w, b: Weights for the affine layer
+
+  Returns a tuple of:
+  - out: Output from the ReLU
+  - cache: Object to give to the backward pass
+  """
+  a, fc_cache = affine_forward(x, w, b)
+  norm_a, batch_cache = batchnorm_forward(a, gamma, beta, bn_param)
+  out, relu_cache = relu_forward(norm_a)
+  cache = (fc_cache, relu_cache, batch_cache)
+  return out, cache
+
+def affine_batch_relu_backward(dout, cache):
+  """
+  Backward pass for the affine-batch-relu convenience layer
+  """
+  fc_cache, relu_cache, batch_cache = cache
+  dnorm_a = relu_backward(dout, relu_cache)
+  da, dgamma, dbeta =  batchnorm_backward_alt(dnorm_a, batch_cache)
+  dx, dw, db = affine_backward(da, fc_cache)
+  return dx, dw, db, dgamma, dbeta
+###########################################################
+
+
+
 class TwoLayerNet(object):
   """
   A two-layer fully-connected neural network with ReLU nonlinearity and
@@ -182,8 +216,15 @@ class FullyConnectedNet(object):
         self.params[W_name] = np.random.randn(input_dim, hidden_dims[i]) * weight_scale
       else:
         self.params[W_name] = np.random.randn(hidden_dims[i -1], hidden_dims[i]) * weight_scale
+      
       self.params[b_name] = np.zeros(hidden_dims[i])
-    
+      
+      if self.use_batchnorm:
+        beta_name = "beta" + str(i +1)
+        gamma_name = "gamma" + str(i +1)
+        self.params[gamma_name] = np.random.randn(hidden_dims[i])
+        self.params[beta_name] = np.random.randn(hidden_dims[i])
+
     W_name = "W" + str(self.num_layers)
     b_name = "b" + str(self.num_layers)
     self.params[W_name] = np.random.randn(hidden_dims[i], num_classes) * weight_scale
@@ -251,14 +292,27 @@ class FullyConnectedNet(object):
       b_name = "b" + str(i +1)
       if i == 0:
         out_pre_layer = X
-      out_pre_layer, cache_affine_relu = affine_relu_forward(out_pre_layer, 
-                                                      self.params[W_name], 
-                                                      self.params[b_name])
+        
+      if self.use_batchnorm:
+        beta_name = "beta" + str(i +1)
+        gamma_name = "gamma" + str(i +1)
+        out_pre_layer, cache_affine_relu = affine_batch_relu_forward(out_pre_layer, 
+                                                                      self.params[W_name], 
+                                                                      self.params[b_name], 
+                                                                      self.params[gamma_name], 
+                                                                      self.params[beta_name], 
+                                                                      self.bn_params[i])
+      else:
+        out_pre_layer, cache_affine_relu = affine_relu_forward(out_pre_layer, 
+                                                        self.params[W_name], 
+                                                        self.params[b_name])
+      
       if self.use_dropout:
         out_pre_layer, cache_dp = dropout_forward(out_pre_layer, self.dropout_param)
         cache[i] = (cache_dp, cache_affine_relu)
       else:
         cache[i] = cache_affine_relu
+    
     W_name_last = "W" + str(self.num_layers)
     b_name_last = "b" + str(self.num_layers)
     scores, cache[self.num_layers -1] = affine_forward(out_pre_layer, 
@@ -290,20 +344,33 @@ class FullyConnectedNet(object):
     b_name = "b" + str(self.num_layers)
     loss, dSoftmax = softmax_loss(scores, y)
     loss = loss + 0.5 * self.reg * np.sum(self.params[W_name]**2)
-    dHidden, grads[W_name], grads[b_name] = affine_backward(dSoftmax,
-                                                                                   cache[self.num_layers -1])
+    dHidden, grads[W_name], grads[b_name] = affine_backward(dSoftmax, cache[self.num_layers -1])
     grads[W_name] = grads[W_name] + self.reg * self.params[W_name]
+    
     for i in range(1, self.num_layers):
       W_name = "W" + str(self.num_layers -i)
       b_name = "b" + str(self.num_layers -i)
       loss = loss + 0.5 * self.reg * np.sum(self.params[W_name]**2)
+      
       if self.use_dropout:
         cache_dp, cache_affine_relu = cache[self.num_layers -1 -i]
         dHidden = dropout_backward(dHidden, cache_dp)
-        dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
+        if self.use_batchnorm:
+          beta_name = "beta" + str(self.num_layers -i)
+          gamma_name = "gamma" + str(self.num_layers -i)
+          dHidden, grads[W_name], grads[b_name], grads[gamma_name], grads[beta_name] = affine_batch_relu_backward(dHidden, cache_affine_relu)
+        else:
+          dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
+      
       else:
         cache_affine_relu = cache[self.num_layers -1 -i]
-        dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
+        if self.use_batchnorm:
+          beta_name = "beta" + str(self.num_layers -i)
+          gamma_name = "gamma" + str(self.num_layers -i)
+          dHidden, grads[W_name], grads[b_name], grads[gamma_name], grads[beta_name] = affine_batch_relu_backward(dHidden, cache_affine_relu)
+        else:
+          dHidden, grads[W_name], grads[b_name] = affine_relu_backward(dHidden, cache_affine_relu)
+      
       grads[W_name] = grads[W_name] + self.reg * self.params[W_name]                                                                                    
     ############################################################################
     #                             END OF YOUR CODE                             #
