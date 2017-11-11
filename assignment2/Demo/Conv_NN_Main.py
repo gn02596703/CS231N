@@ -329,20 +329,20 @@ solver = Solver(model, small_data,
                   'learning_rate': 1e-3,
                 },
                 verbose=True, print_every=1)
-#solver.train()
+solver.train()
 
-#plt.subplot(2, 1, 1)
-#plt.plot(solver.loss_history, 'o')
-#plt.xlabel('iteration')
-#plt.ylabel('loss')
+plt.subplot(2, 1, 1)
+plt.plot(solver.loss_history, 'o')
+plt.xlabel('iteration')
+plt.ylabel('loss')
 
-#plt.subplot(2, 1, 2)
-#plt.plot(solver.train_acc_history, '-o')
-#plt.plot(solver.val_acc_history, '-o')
-#plt.legend(['train', 'val'], loc='upper left')
-#plt.xlabel('epoch')
-#plt.ylabel('accuracy')
-#plt.show()
+plt.subplot(2, 1, 2)
+plt.plot(solver.train_acc_history, '-o')
+plt.plot(solver.val_acc_history, '-o')
+plt.legend(['train', 'val'], loc='upper left')
+plt.xlabel('epoch')
+plt.ylabel('accuracy')
+plt.show()
 
 # Train the net
 model = ThreeLayerConvNet(weight_scale=0.001, hidden_dim=500, reg=0.001)

@@ -1,5 +1,5 @@
 import numpy as np
-
+import pdb
 """
 This file implements various first-order update rules that are commonly used for
 training neural networks. Each update rule accepts current weights and the
